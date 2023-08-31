@@ -1,12 +1,17 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import cumtrapz
-
+import dataclasses
 import maplookup
 from pygam import LinearGAM, s  # , te
 
-
-import dataclasses
+#
+# This file has a class to hold a density profile along with
+# additional metadata and derived data such as overburden.
+#
+#
+# Aslak Grinsted 2023
+#
 
 
 @dataclasses.dataclass()
@@ -70,7 +75,7 @@ class DensityCore:
             # make it smooth but keep values in raw
             self._raw_z = z.ravel()
             self._raw_rho = rho.ravel()
-            self._z = np.arange(0.0, np.max(z), dz_smoothing)
+            self._z = np.arange(0.0, np.max(z), dz_smoothing)  # IT has to go to the surface!
             self._rho = concave_fit(self._raw_z, self._raw_rho, self._z)
         self._drho_dz = np.gradient(self._rho, self._z)
         self._overburden = cumtrapz(self._rho, self._z, initial=0)
@@ -78,7 +83,7 @@ class DensityCore:
     def plot(self, show_raw=False, **kwargs):
         h = plt.plot(self._rho, -self._z, label=self.site_name, zorder=2, **kwargs)
         if show_raw:
-            plt.plot(self._raw_rho, -self._raw_z, ".", color=h[0].get_color(), ms=0.5,alpha=0.5, **kwargs)
+            plt.plot(self._raw_rho, -self._raw_z, ".", color=h[0].get_color(), ms=0.5, alpha=0.5, **kwargs)
 
 
 # --------------------------------------------------------------
@@ -89,6 +94,7 @@ g = 9.82
 secperyear = 365.25 * 24 * 60 * 60
 
 
+# this is a helper function to make non-linear transformation of the x-axis of the current plot axis
 def density_xscale():
     symlog = lambda x, thres: np.sign(x) * (np.log(1 + np.abs(x) / thres))
     symexp = lambda y, thres: np.sign(y) * thres * (np.exp(y) - 1)
@@ -97,6 +103,7 @@ def density_xscale():
     plt.xscale("function", functions=(forward_transform, inverse_transform))
 
 
+# this function is used to make a smooth density profile from noisy data.
 def concave_fit(zp, rhop, z, rhos=None, n_splines=20):
     X = zp.ravel()
     y = rhop.ravel()
