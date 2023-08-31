@@ -110,7 +110,6 @@ def multicore_fit(cores, rho=np.arange(350, 890, 10.0), min_a=1.0):
         this_rho = rho[ix]
         # --------------- Prepare data for fitting ------------
         # for every site we need vectors of e1,e2,sigma_zz,e_zz,T
-        # (for the gagli_vec function)
         e1 = np.full(N_cores, np.nan)
         e2 = np.full(N_cores, np.nan)
         sigma_zz = np.full(N_cores, np.nan)
@@ -127,6 +126,8 @@ def multicore_fit(cores, rho=np.arange(350, 890, 10.0), min_a=1.0):
             e_zz[cix] = -w * drho_dz / this_rho - core.e1 - core.e2
             z = np.interp(this_rho, core.rho, core.z)
 
+        # now we have all we need for fitting.
+
         if np.min(z) < 1:  # dont attempt using the model without any load.
             # near surface has no load and are affected by seasonal temperatures.
             continue
@@ -139,8 +140,7 @@ def multicore_fit(cores, rho=np.arange(350, 890, 10.0), min_a=1.0):
         x2a = lambda x: np.exp(x[0]) + min_a  # a>=min_a
         x2b = lambda x: x2a(x) * sigmoid(x[1]) * 9 / 2  # b<=9a/2
         deviance = lambda x: gagli_vec(sigma_zz, x2a(x), x2b(x), T, e1=e1, e2=e2) * sec_per_year - e_zz
-        # deviance = lambda x: np.log(gagli_vec(sigma_zz, x2a(x), x2b(x), T, e1=e1, e2=e2) * sec_per_year / e_zz) - 1
-        res = least_squares(deviance, x0=[1, 1], method="lm")
+        res = least_squares(deviance, x0=[1, 1], method="lm")  # the LM method works very reliably
         if res.success:
             x = res.x
             a[ix], b[ix] = x2a(x), x2b(x)
