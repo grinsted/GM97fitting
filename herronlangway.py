@@ -10,7 +10,7 @@ g = 9.82
 
 
 def ArthernHL(T, rho, bdot):
-    # herron langway as given in Arthern2010
+    # herron langway as given in Arthern et al. 2010
     # units: celcius, kg/m3, kg/m2
     T = T + 273.15
     c0 = 11 * (bdot / rhow) * np.exp(-10160 / (R * T))
@@ -21,6 +21,7 @@ def ArthernHL(T, rho, bdot):
 
 
 def HL_density_profile(T=-31.7, rhos=300, bdot=0.13 * rhow):
+    # This makes a herron langway profile and returns it as a DensityCore
 
     drho = 10
     rho = np.arange(rhos, 900, drho)

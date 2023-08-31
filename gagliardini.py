@@ -25,6 +25,12 @@ def r_fun(a, b):
     return 2 / (3 * a) + 3 / (2 * b)
 
 
+def ab_from_r(r, baratio):
+    a = (4 * baratio + 9) / (6 * baratio * r)
+    b = a * baratio
+    return a, b
+
+
 def gagliardini_ezz(sigma_zz, a, b, T, e1=0, e2=0):
     # assuming e1=0 and e2=0
     r = r_fun(a, b)
@@ -56,43 +62,6 @@ def b_fun(rho):
     return np.where(r < 0.81, b1, b2)
 
 
-# TODO: use density_core - return r instead of a and b
-# def fit_density_profile(z, rho, drho_dz=None, T=-31, bdot=0.11 * 917, e1=0, e2=0):
-#    #
-#    if drho_dz is None:  # this is to facilitate that you can pass a smoothed calculation of the gradient.
-#        drho_dz = np.gradient(rho, z)
-#    overburden_load = cumtrapz(rho, z, initial=0)
-#    sigma_zz = -overburden_load * g
-#    w = (bdot - overburden_load * (e1 + e2)) / rho
-#
-#    # w = bdot / rho
-#    # asssumed:
-#    ezz = -w * drho_dz / rho - e1 - e2  # TODO: check
-#
-#    a = np.full_like(z, np.nan)
-#    b = np.full_like(z, np.nan)
-#    for ix in range(len(a)):
-#        this_rho = rho[ix]
-#        this_ezz = ezz[ix] / sec_per_year
-#        this_sigma_zz = sigma_zz[ix]
-#        if this_sigma_zz > -10:
-#            continue
-#
-#        baratio = b_fun(this_rho) / a_fun(this_rho)
-#        try:
-#            sol = root_scalar(
-#                lambda a: gagliardini_ezz(this_sigma_zz, a, a * baratio, T, e1 / sec_per_year, e2 / sec_per_year) - this_ezz,
-#                x0=a_fun(this_rho),
-#                bracket=[1e-6, 1e6],
-#            )
-#            if sol.converged:
-#                a[ix] = sol.root
-#                b[ix] = sol.root * baratio
-#        except ValueError:
-#            pass
-#    return a, b
-
-
 def singlecore_fit(core):
     sigma_zz = -core.overburden * g
     w = (core.bdot - core.overburden * (core.e1 + core.e2)) / core.rho
@@ -100,11 +69,11 @@ def singlecore_fit(core):
 
     a = np.full_like(core.z, np.nan)
     b = np.full_like(core.z, np.nan)
-    for ix in range(len(a)):
+    for ix in range(len(core.z)):
         this_rho = core.rho[ix]
         this_ezz = ezz[ix] / sec_per_year
         this_sigma_zz = sigma_zz[ix]
-        if this_sigma_zz > -10:
+        if this_sigma_zz > -10:  # we must have some load for this to work.
             continue
 
         baratio = b_fun(this_rho) / a_fun(this_rho)
@@ -122,7 +91,7 @@ def singlecore_fit(core):
     return r_fun(a, b)
 
 
-def multicore_fit(cores, rho=np.arange(350, 890, 10.0)):
+def multicore_fit(cores, rho=np.arange(350, 890, 10.0), min_a=1.0):
     # Takes a list of DensityCore's and tries makes the best fit a and b.
     # Assuming steady state.
 
@@ -163,9 +132,10 @@ def multicore_fit(cores, rho=np.arange(350, 890, 10.0)):
             continue
 
         # transform the parameter space so that it is impossible to exceed theoretical limits.
-        x2a = lambda x: np.exp(x[0]) + 1  # a>=1
+        x2a = lambda x: np.exp(x[0]) + min_a  # a>=min_a
         x2b = lambda x: x2a(x) * sigmoid(x[1]) * 9 / 2  # b<=9a/2
         deviance = lambda x: gagli_vec(sigma_zz, x2a(x), x2b(x), T, e1=e1, e2=e2) * sec_per_year - e_zz
+        # deviance = lambda x: np.log(gagli_vec(sigma_zz, x2a(x), x2b(x), T, e1=e1, e2=e2) * sec_per_year / e_zz) - 1
         res = least_squares(deviance, x0=[1, 1], method="lm")
         if res.success:
             x = res.x

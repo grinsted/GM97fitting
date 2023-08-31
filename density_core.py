@@ -14,6 +14,7 @@ from pygam import LinearGAM, s  # , te
 #
 
 
+# TODO: consider using a regular class instead of dataclass.
 @dataclasses.dataclass()
 class DensityCore:
     site_name: str = ""
@@ -38,7 +39,7 @@ class DensityCore:
         if np.isnan(self.e1 + self.e2):
             self.e1, self.e2 = maplookup.get_strainrate(self.lat, self.lon, return_eigen_strainrate=True)
         if np.isnan(self.bdot):
-            self.bdot = maplookup.get_accumulation(self.lat, self.lon)
+            self.bdot = maplookup.get_accumulation(self.lat, self.lon) * 1000
         if np.isnan(self.T):
             self.T = maplookup.get_temperature(self.lat, self.lon)
 
@@ -67,14 +68,15 @@ class DensityCore:
         return self._raw_rho
 
     def set_density_profile(self, z, rho, is_smooth=False, dz_smoothing=0.5):
+        six = np.argsort(z.ravel())
         # TODO: auto smooth if not smooth?
         if is_smooth:
-            self._z = z.ravel()
-            self._rho = rho.ravel()
+            self._z = z.ravel()[six]
+            self._rho = rho.ravel()[six]
         else:
             # make it smooth but keep values in raw
-            self._raw_z = z.ravel()
-            self._raw_rho = rho.ravel()
+            self._raw_z = z.ravel()[six]
+            self._raw_rho = rho.ravel()[six]
             self._z = np.arange(0.0, np.max(z), dz_smoothing)  # IT has to go to the surface!
             self._rho = concave_fit(self._raw_z, self._raw_rho, self._z)
         self._drho_dz = np.gradient(self._rho, self._z)
@@ -83,7 +85,7 @@ class DensityCore:
     def plot(self, show_raw=False, **kwargs):
         h = plt.plot(self._rho, -self._z, label=self.site_name, zorder=2, **kwargs)
         if show_raw:
-            plt.plot(self._raw_rho, -self._raw_z, ".", color=h[0].get_color(), ms=0.5, alpha=0.5, **kwargs)
+            plt.plot(self._raw_rho, -self._raw_z, ".", color=h[0].get_color(), ms=0.5, alpha=0.1, **kwargs)
 
 
 # --------------------------------------------------------------
