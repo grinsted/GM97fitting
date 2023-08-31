@@ -95,18 +95,22 @@ def multicore_fit(cores, rho=np.arange(350, 890, 10.0), min_a=1.0):
     # Takes a list of DensityCore's and tries makes the best fit a and b.
     # Assuming steady state.
 
+    # allocate space for a(rho) and b(rho)
     a = np.full_like(rho, np.nan)
     b = np.full_like(rho, np.nan)
 
+    # make a vectorized version of the gagliardni_ezz function
     gagli_vec = np.vectorize(gagliardini_ezz)
 
-    sigmoid = lambda x: 1 / (1 + np.exp(-x))  # this is used to enforce limits on parameter search.
+    # we can use a sigmoid transform to enforce limits on parameter search.
+    sigmoid = lambda x: 1 / (1 + np.exp(-x))
 
     N_cores = len(cores)
-
     for ix in range(len(rho)):
         this_rho = rho[ix]
-        # -------------------- Prepare data for fitting.
+        # --------------- Prepare data for fitting ------------
+        # for every site we need vectors of e1,e2,sigma_zz,e_zz,T
+        # (for the gagli_vec function)
         e1 = np.full(N_cores, np.nan)
         e2 = np.full(N_cores, np.nan)
         sigma_zz = np.full(N_cores, np.nan)
