@@ -1,0 +1,1 @@
+rclone sync . erda:JupyterNotebooks/firnmodel-1d --progress --exclude ".git/**" --exclude "__pycache__/**" --exclude ".vscode/**" --exclude "*.ipynb_checkpoints/**"

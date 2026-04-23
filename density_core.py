@@ -1,9 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.integrate import cumtrapz
+from scipy.integrate import cumulative_trapezoid as cumtrapz
 import dataclasses
 import maplookup
+import pickle
 from pygam import LinearGAM, s  # , te
+from dataclasses import fields, asdict
 
 #
 # This file has a class to hold a density profile along with
@@ -12,6 +14,12 @@ from pygam import LinearGAM, s  # , te
 #
 # Aslak Grinsted 2023
 #
+
+rhoi = 921  # used to calculate rho_hat in weird xscale function
+g = 9.82
+
+
+# --------------------------------------------------------------
 
 
 # TODO: consider using a regular class instead of dataclass.
@@ -31,13 +39,10 @@ class DensityCore:
     _raw_rho: np.ndarray = dataclasses.field(default=np.nan, repr=False, init=False)
     _drho_dz: np.ndarray = dataclasses.field(default=np.nan, repr=False, init=False)
     _overburden: np.ndarray = dataclasses.field(default=np.nan, repr=False, init=False)
-    # TODO: it would make sense to autocalculate drho_dz and overburden the moment
-    # rho is assigned to. But we dont need perfect OOP.
-    # - So we just use it as a data container for the moment.
 
     def __post_init__(self):
         if np.isnan(self.e1 + self.e2):
-            self.e1, self.e2 = maplookup.get_strainrate(self.lat, self.lon, return_eigen_strainrate=True)
+            self.e1, self.e2 = maplookup.get_strainrate(self.lat, self.lon, source="dtu", smoothing_sigma=150, return_eigen_strainrate=True)
         if np.isnan(self.bdot):
             self.bdot = maplookup.get_accumulation(self.lat, self.lon) * 1000
         if np.isnan(self.T):
@@ -67,33 +72,48 @@ class DensityCore:
     def raw_rho(self) -> np.ndarray:
         return self._raw_rho
 
-    def set_density_profile(self, z, rho, is_smooth=False, dz_smoothing=0.5):
-        six = np.argsort(z.ravel())
-        # TODO: auto smooth if not smooth?
+    def set_density_profile(self, z, rho, is_smooth=False, dz_smoothing=0.5, rhos=None):
+        six = np.argsort(np.asarray(z))
         if is_smooth:
-            self._z = z.ravel()[six]
-            self._rho = rho.ravel()[six]
+            self._z = np.asarray(z)[six]
+            self._rho = np.asarray(rho)[six]
         else:
             # make it smooth but keep values in raw
-            self._raw_z = z.ravel()[six]
-            self._raw_rho = rho.ravel()[six]
+            self._raw_z = np.asarray(z)[six]
+            self._raw_rho = np.asarray(rho)[six]
             self._z = np.arange(0.0, np.max(z), dz_smoothing)  # IT has to go to the surface!
-            self._rho = concave_fit(self._raw_z, self._raw_rho, self._z)
+            self._rho = concave_fit(self._raw_z, self._raw_rho, self._z, rhos=rhos)
         self._drho_dz = np.gradient(self._rho, self._z)
         self._overburden = cumtrapz(self._rho, self._z, initial=0)
 
     def plot(self, show_raw=False, **kwargs):
-        h = plt.plot(self._rho, -self._z, label=self.site_name, zorder=2, **kwargs)
+        h = plt.plot(self._rho, self._z, label=self.site_name, zorder=2, **kwargs)
         if show_raw:
-            plt.plot(self._raw_rho, -self._raw_z, ".", color=h[0].get_color(), ms=0.5, alpha=0.1, **kwargs)
+            plt.plot(self._raw_rho, self._raw_z, ".", color=h[0].get_color(), **kwargs)
+        plt.gca().set_ylim(np.sort(plt.gca().get_ylim())[::-1])
 
+    # -------------------------
+    # Serialization helpers
+    # -------------------------
 
-# --------------------------------------------------------------
+    def to_dict(self):
+        return asdict(self)
 
+    @classmethod
+    def from_dict(cls, d):
+        obj = cls.__new__(cls)
+        obj.__dict__ = d
+        return obj
 
-rhoi = 917  # used to calculate rho_hat
-g = 9.82
-secperyear = 365.25 * 24 * 60 * 60
+    def save(self, filename):
+        with open(filename, "wb") as f:
+            pickle.dump(self.to_dict(), f)
+
+    @classmethod
+    def load(cls, filename):
+        with open(filename, "rb") as f:
+            data = pickle.load(f)
+        return cls.from_dict(data)
 
 
 # this is a helper function to make non-linear transformation of the x-axis of the current plot axis
@@ -106,7 +126,15 @@ def density_xscale():
 
 
 # this function is used to make a smooth density profile from noisy data.
-def concave_fit(zp, rhop, z, rhos=None, n_splines=20):
+def concave_fit(
+    zp,
+    rhop,
+    z,
+    rhos=None,
+    n_splines=20,
+    contraints=["monotonic_inc", "concave"],
+    lam=10,
+):
     X = zp.ravel()
     y = rhop.ravel()
     weights = np.ones_like(y)
@@ -114,7 +142,7 @@ def concave_fit(zp, rhop, z, rhos=None, n_splines=20):
         X = np.append(0, X)
         y = np.append(rhos, y)
         weights = np.append(100.0, weights)  # should this be a parameter
-    mygam = LinearGAM(s(0, n_splines=n_splines, constraints="concave")).fit(X, y, weights=weights)
+    mygam = LinearGAM(s(0, n_splines=n_splines, constraints=contraints), lam=lam).fit(X, y, weights=weights)
     # z = np.arange(np.min(zp),np.max(zp),dz)
     rho = mygam.predict(z)
     rho[z > np.max(zp)] = np.nan  # do not extrapolate!
